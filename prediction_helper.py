@@ -1,11 +1,13 @@
 import pandas as pd
 import joblib
 
-model_young = joblib.load("artifacts\model_young.joblib")
-model_rest = joblib.load("artifacts\model_rest.joblib")
-scaler_young = joblib.load("artifacts\scaler_young.joblib")
-scaler_rest = joblib.load("artifacts\scaler_rest.joblib")
+# Load models and scalers
+model_young = joblib.load("artifacts/model_young.joblib")
+model_rest = joblib.load("artifacts/model_rest.joblib")
+scaler_young = joblib.load("artifacts/scaler_young.joblib")
+scaler_rest = joblib.load("artifacts/scaler_rest.joblib")
 
+# Function to calculate normalized risk score based on medical history
 def calculate_normalized_risk(medical_history):
     risk_scores = {
         "diabetes": 6,
@@ -21,7 +23,7 @@ def calculate_normalized_risk(medical_history):
     # Calculate the total risk score by summing the risk scores for each part
     total_risk_score = sum(risk_scores.get(disease, 0) for disease in diseases)  # Default to 0 if disease not found
 
-    max_score = 14 # risk score for heart disease (8) + second max risk score (6) for diabetes or high blood pressure
+    max_score = 14  # risk score for heart disease (8) + second max risk score (6) for diabetes or high blood pressure
     min_score = 0  # Since the minimum score is always 0
 
     # Normalize the total risk score
@@ -29,6 +31,7 @@ def calculate_normalized_risk(medical_history):
 
     return normalized_risk_score
 
+# Preprocessing function
 def preprocess_input(input_dict):
     # Define the expected columns and initialize the DataFrame with zeros
     expected_columns = [
@@ -40,8 +43,8 @@ def preprocess_input(input_dict):
 
     insurance_plan_encoding = {'Bronze': 1, 'Silver': 2, 'Gold': 3}
 
+    # Initialize DataFrame with expected columns and default values
     df = pd.DataFrame(0, columns=expected_columns, index=[0])
-    # df.fillna(0, inplace=True)
 
     # Manually assign values for each categorical input based on input_dict
     for key, value in input_dict.items():
@@ -73,25 +76,28 @@ def preprocess_input(input_dict):
                 df['employment_status_Salaried'] = 1
             elif value == 'Self-Employed':
                 df['employment_status_Self-Employed'] = 1
-        elif key == 'Insurance Plan':  # Correct key usage with case sensitivity
+        elif key == 'Insurance Plan':
             df['insurance_plan'] = insurance_plan_encoding.get(value, 1)
-        elif key == 'Age':  # Correct key usage with case sensitivity
+        elif key == 'Age':
             df['age'] = value
-        elif key == 'Number of Dependants':  # Correct key usage with case sensitivity
+        elif key == 'Number of Dependants':
             df['number_of_dependants'] = value
-        elif key == 'Income in Lakhs':  # Correct key usage with case sensitivity
+        elif key == 'Income in Lakhs':
             df['income_lakhs'] = value
         elif key == "Genetical Risk":
             df['genetical_risk'] = value
 
-    # Assuming the 'normalized_risk_score' needs to be calculated based on the 'age'
-    df['normalized_risk_score'] = calculate_normalized_risk(input_dict['Medical History'])
+    # Calculate normalized_risk_score safely
+    df['normalized_risk_score'] = calculate_normalized_risk(input_dict.get('Medical History', 'none'))
+
+    # Scale the necessary features
     df = handle_scaling(input_dict['Age'], df)
 
     return df
 
+# Function to handle scaling of the input features
 def handle_scaling(age, df):
-    # scale age and income_lakhs column
+    # Determine which scaler to use based on age
     if age <= 25:
         scaler_object = scaler_young
     else:
@@ -100,16 +106,21 @@ def handle_scaling(age, df):
     cols_to_scale = scaler_object['cols_to_scale']
     scaler = scaler_object['scaler']
 
-    df['income_level'] = None # since scaler object expects income_level supply it. This will have no impact on anything
+    # Adding a dummy 'income_level' column (required by scaler object) and removing it after scaling
+    df['income_level'] = None  # Scaler object expects 'income_level'; this will have no impact on final output
     df[cols_to_scale] = scaler.transform(df[cols_to_scale])
 
+    # Drop the dummy 'income_level' column
     df.drop('income_level', axis='columns', inplace=True)
 
     return df
 
+# Prediction function
 def predict(input_dict):
+    # Preprocess the input dictionary into a DataFrame
     input_df = preprocess_input(input_dict)
 
+    # Predict using the appropriate model based on age
     if input_dict['Age'] <= 25:
         prediction = model_young.predict(input_df)
     else:
